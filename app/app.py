@@ -1,58 +1,54 @@
 import os
-import boto3
-from flask import Flask
-from flask import jsonify
-from flask import request
+
+from flask import Flask, render_template, redirect, url_for
+from flask_wtf import FlaskForm
+from wtforms import StringField, SubmitField
+from wtforms.validators import DataRequired, Email
+import requests
+
+
+# 環境変数からバックエンドサービスのURLを取得
+backend_url = os.getenv('BACKEND_URL', 'http://localhost:5050/messages')
 
 app = Flask(__name__)
-
-dynamo_client = boto3.client('dynamodb', region_name='ap-northeast-1')
-table_name = 'musicTable'
+app.config['SECRET_KEY'] = 'argqtahqtaatayaat'
 
 
-@app.route('/')
-def hello():
-    return 'Hello World!'
+class MessageForm(FlaskForm):
+    message = StringField(validators=[DataRequired()])
+    submit = SubmitField()
 
 
-@app.route('/v1/music/90s/<string:artist>')
-def get_artist(artist):
-    resp = dynamo_client.get_item(
-        TableName=table_name,
-        Key={
-            'artist': {'S': artist}
-        }
-    )
-    item = resp.get('Item')
-    if not item:
-        return jsonify({'error': 'Artist does not exist'}), 404
+@app.route('/', methods=['GET'])
+def home_page():
 
-    return jsonify({
-        'artist': item.get('artist').get('S'),
-        'song': item.get('song').get('S')
-    })
+    r = requests.get(backend_url)
+    r.raise_for_status()
+    items = r.json()
+
+    form = MessageForm()
+
+    return render_template('home.html', items=items, form=form)
 
 
-@app.route('/v1/music/90s', methods=['POST'])
-def create_artist():
-    artist = request.json.get('artist')
-    song = request.json.get('song')
-    if not artist or not song:
-        return jsonify({'error': 'Please provide Artist and Song'}), 400
+@app.route('/', methods=['POST'])
+def post_message():
 
-    resp = dynamo_client.put_item(
-        TableName=table_name,
-        Item={
-            'artist': {'S': artist},
-            'song': {'S': song}
-        }
-    )
+    form = MessageForm()
 
-    return jsonify({
-        'artist': artist,
-        'song': song
-    })
+    if form.validate_on_submit():
+        json = {'message': form.message.data}
+        r = requests.post(backend_url, json=json)
+        r.raise_for_status()
+        return redirect(url_for('home_page'))
+
+    return render_template('home.html', form=form)
+
+
+@app.route('/healthz', methods=['GET'])
+def health_check():
+    return 'OK'
 
 
 if __name__ == '__main__':
-    app.run(threaded=True, host='0.0.0.0', port=8080, debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=True)
