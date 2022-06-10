@@ -1,5 +1,4 @@
 FROM python:3.8-slim as builder
-# COPY .. /src
 COPY . /src
 RUN pip install --user fastapi uvicorn boto3 flask
 
